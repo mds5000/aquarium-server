@@ -14,6 +14,7 @@ import paho.mqtt.client as mqtt
 """
 
 MQTT_HOST = os.environ.get("MQTT_HOSTNAME", "localhost:1883")
+MQTT_HOST = "msunderland-lin:1883"
 
 
 class DeviceProvider(object):
@@ -21,14 +22,15 @@ class DeviceProvider(object):
         host, port = mqtt_host.split(":")
         self.callbacks = {}
         self.devices = {}
+        self.key = provider_key
         self.client = mqtt.Client(client_id=provider_key)
-        self.client.connect(host, port)
+        self.client.connect(host, int(port))
 
         self.client
 
     def register_device(self, name, description, units=None, calibration=[], callback=None):
         payload = {
-            "name": name,
+            "name": "{}/{}".format(self.key, name),
             "description": description,
             "units": units,
             "calibration": ",".join(calibration)
@@ -36,7 +38,7 @@ class DeviceProvider(object):
         self.devices[name] = payload
         self.client.publish("new_device", payload=json.dumps(payload))
         if callback is not None:
-            self.subscribe("{}/update".format(name), callback)
+            self.subscribe("{}/{}/update".format(self.key, name), callback)
 
     def loop(self, once=True):
         if once:
@@ -56,7 +58,7 @@ class DeviceProvider(object):
             raise KeyError("Unknown device '{}'".format(device))
 
         payload = json.dumps(data)
-        self.client.publish("{}/value".format(device), payload=payload, retain=retain)
+        self.client.publish("{}/{}/value".format(self.key, device), payload=payload, retain=retain)
 
 
 if __name__ == "__main__":
@@ -78,6 +80,7 @@ if __name__ == "__main__":
 
         if time.time() > now + 2:
             now = time.time()
-            p.publish("led", state)
+            p.publish("led", {"value": state})
+            print "PUB:", state
             state = not state
 

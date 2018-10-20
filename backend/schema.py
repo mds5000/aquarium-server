@@ -8,41 +8,19 @@ class Device(db.Model):
     __tablename__ = 'devices'
 
     id = Column(Integer, primary_key=True)
-    provider_name = Column(String, nullable=False)
-    #provider = Column(ForeignKey('providers.id'))
-    provider = Column(String, nullable=False)
-    display_name = Column(String)
+    address = Column(String, nullable=False)
+    name = Column(String)
     description = Column(String)
     units = Column(String)
 
     def serialize(self):
         return {
             "id": self.id,
-            "address": "{}/{}".format(self.provider, self.provider_name),
-            "name": self.display_name if self.display_name else self.provider_name,
+            "address": self.address,
+            "name": self.name if self.name else self.address,
             "description": self.description,
             "units": self.units
         }
-
-
-"""
-class Provider(db.Model):
-    __tablename__ = 'providers'
-
-    id = Column(String, primary_key=True)
-    rpc_address = Column(String)
-    argv = Column(String)
-    pid = Column(Integer)
-    devices = relationship("Device", back_populates="provider")
-
-    def serialize(self):
-        return {
-            "id": self.id,
-            "rpc_address": self.rpc_address,
-            "argv": self.argv,
-            "pid": self.pid
-        }
-"""
 
 
 class Measurement(db.Model):
@@ -70,7 +48,7 @@ class Event(db.Model):
     id = Column(Integer, primary_key=True)
     device = Column(ForeignKey('devices.id'))
     action = Column(String, nullable=False)
-    value = Column(Float)
+    value = Column(String)
     comment = Column(String)
     timestamp = Column(DateTime, server_default=func.now())
 
@@ -105,3 +83,13 @@ def drop_tables():
         db.drop_all()
     print "Dropped Tables"
 
+def init_test_data(app):
+    devices = [
+        Device(address="test/device1", description="A short description"),
+        Device(address="test/device2", name="My Device", description="A longer description", units='Fish')
+    ]
+
+    with app.app_context():
+        for dev in devices:
+            db.session.add(dev)
+        db.session.commit()

@@ -1,4 +1,4 @@
 flask
 flask_sqlalchemy
 flask_jsonrpc
-gevent
+flask_mqtt
