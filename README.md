@@ -1,6 +1,12 @@
 # aquarium-server
 An aquarium controller and monitor application
 
+# Install Instructions
+ * pip install virtualenv
+ * virtualenv venv -p python3.7
+ * source venv/bin/activate
+ * pip install -r backend/requirements.txt
+
 
 # Design Documentation
 

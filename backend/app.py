@@ -5,6 +5,8 @@ from aiohttp import web
 from aioinflux import InfluxDBClient
 
 from temp_sensor import TempSensor
+from gpio import Gpio
+from dosing_pump import DosingPump
 
 
 async def initialize_database(app):
@@ -33,7 +35,9 @@ if __name__ == '__main__':
     mock = MockTempSensor()
     app = web.Application()
     app['drivers'] = [
-        TempSensor(path=mock.root+"/hwmon0/temp1_input")
+        TempSensor(path=mock.root+"/hwmon0/temp1_input"),
+        Gpio(20, "gpio20"),
+        Gpio(21, "gpio21")
     ]
 
     app.on_startup.append(initialize_application)
