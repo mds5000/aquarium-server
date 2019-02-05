@@ -22,7 +22,10 @@ class DosingPump():
     def __init__(self, gpio, name):
         self.name = name
         self.gpio = gpio
-        self.dose_events = []
+        self.dose_events = [
+            DoseEvent(datetime.time(4, 37, 0), 12),
+            DoseEvent(datetime.time(4, 38, 3), 2)
+        ]
 
     def set_dosing_events(self, dose_events):
         self.dose_events = sorted(dose_events)
@@ -40,10 +43,10 @@ class DosingPump():
 
     async def dose_duration(self, duration):
         try:
-            self.gpio.set_state(True)
-            await asyncio.get_running_loop().sleep(duration)
+            await self.gpio.set_state(True)
+            await asyncio.sleep(duration)
         finally:
-            self.gpio.set_state(False)
+            await self.gpio.set_state(False)
         
 
     def routes(self):
@@ -59,16 +62,16 @@ class DosingPump():
     @staticmethod
     def seconds_until(then, now):
         hours = then.hour - now.hour
-        if hours < 0:
-            hours += 24
         minutes = then.minute - now.minute
-        if minutes < 0:
-            minutes += 60
-            hours -= 1
         seconds = then.second - now.second
         if seconds < 0:
             seconds += 60
             minutes -= 1
+        if minutes < 0:
+            minutes += 60
+            hours -= 1
+        if hours < 0:
+            hours += 24
 
         return hours * 60 * 60 + minutes * 60 + seconds
 
@@ -76,7 +79,7 @@ class DosingPump():
         """ Add the event to the database """
         return await db.write({
             "measurement": "events",
-            "time": datetime.now(),
+            "time": datetime.datetime.now(),
             "tags": {"name": self.name},
             "fields": {"value": state}
         })
@@ -88,17 +91,18 @@ class DosingPump():
         while True:
             time_of_day = datetime.datetime.now().time()
             next_event = self.get_next_event(time_of_day)
-            print("ENTER LOOP:", time.time())
 
             if next_event is None:
                 await asyncio.sleep(10)
                 continue
 
             seconds_until_event = self.seconds_until(next_event.time, time_of_day)
+            print("Seconds until dosing:", seconds_until_event)
             if seconds_until_event < 10:
                 await asyncio.sleep(seconds_until_event)
                 await self.dose_duration(next_event.duration)
-                await self.record_event(db, next_event.duration)
+                await self.record_event(influx, next_event.duration)
+                print("Completed dosing:", next_event.duration)
 
             else:
                 await asyncio.sleep(10)

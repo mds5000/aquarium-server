@@ -31,13 +31,12 @@ async def shutdown_application(app):
 
 
 if __name__ == '__main__':
-    from tests.fake_temp import MockTempSensor
-    mock = MockTempSensor()
     app = web.Application()
+    pump = Gpio(17, "gpio-pump")
     app['drivers'] = [
-        TempSensor(path=mock.root+"/hwmon0/temp1_input"),
-        Gpio(20, "gpio20"),
-        Gpio(21, "gpio21")
+        TempSensor(path="/sys/class/hwmon/hwmon0/temp1_input"),
+        pump,
+        DosingPump(pump, "dosing-pump")
     ]
 
     app.on_startup.append(initialize_application)

@@ -11,7 +11,7 @@ class Gpio():
     def __init__(self, number, name, direction="out", root="/sys/class/gpio"):
         """
         """
-        self.path = os.path.join(self.root, "gpio{}".format(number))
+        self.path = os.path.join(root, "gpio{}".format(number))
         if not os.path.exists(self.path):
             self._export_gpio(root, number)
 
@@ -33,7 +33,7 @@ class Gpio():
             gpio.write(direction)
 
     async def set_state(self, state):
-        state = '1\n' if state else '0\n'
+        state = '1' if state else '0'
         async with aiofiles.open(os.path.join(self.path, "value"), 'w') as gpio:
             await gpio.write(state)
 
@@ -56,7 +56,7 @@ class Gpio():
             "measurement": "events",
             "time": datetime.now(),
             "tags": {"name": self.name},
-            "fields": {"value": state}
+            "fields": {"value": int(state)}
         })
 
     async def get_request(self, request):
@@ -100,19 +100,26 @@ class Gpio():
         if state is None:
             raise HTTPBadRequest()
 
+        try:
+            state = True if int(state) else False
+        except ValueError:
+            state = False
+
         influx = request.app["influx-db"]
-        await set_state(state)
-        await record_event(influx, state)
+        await self.set_state(state)
+        await self.record_event(influx, state)
         return web.json_response({"state": state})
 
     def routes(self):
         return [
-            web.get('/api/temp', self.get_request),
-            web.get('/api/temp/value', self.value_request),
-            web.put('/api/temp/value', self.set_value_request)
+            web.get('/api/{}'.format(self.name), self.get_request),
+            web.get('/api/{}/value'.format(self.name), self.value_request),
+            web.put('/api/{}/value'.format(self.name), self.set_value_request)
         ]
 
     async def event_handler(self, app):
-        pass
-
-
+        influx = app["influx-db"]
+        
+        # Reset GPIO output on start-up
+        await self.set_state(False)
+        await self.record_event(influx, False)

@@ -7,6 +7,13 @@ An aquarium controller and monitor application
  * source venv/bin/activate
  * pip install -r backend/requirements.txt
 
+# Hardware Configuration
+
+GPIO 4 - Temp Sensor, w1-gpio
+GPIO 12 - PWM 0 - Color
+GPIO 13 - PWM 1 - Intensity
+GPIO 17 - Pump
+
 
 # Design Documentation
 
