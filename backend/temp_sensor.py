@@ -69,6 +69,19 @@ class TempSensor():
         resp = await influx.query("""SELECT value FROM "samples" WHERE "name"='{name}'""".format(name=self.name))
         return web.json_response(resp)
 
+    async def card_request(self, request):
+        influx = request.app["influx-db"]
+        resp = await influx.query(
+            """SELECT LAST("value") FROM "samples"
+               WHERE "name"='{name}'
+            """.format(name=self.name)
+        )
+
+        return web.json_response({
+            "name": self.name,
+            "value": resp
+        })
+
     async def event_handler(self, app):
         """
         The handler loop for a temperature sensor.
@@ -94,9 +107,10 @@ class TempSensor():
 
     def routes(self):
         return [
-            web.get('/api/temp', self.get_request),
-            web.put('/api/temp', self.put_request),
-            web.get('/api/temp/value', self.value_request)
+            web.get('/api/{}'.format(self.name), self.get_request),
+            web.put('/api/{}'.format(self.name), self.put_request),
+            web.get('/api/{}/value'.format(self.name), self.value_request),
+            web.get('/api/{}/card'.format(self.name), self.card_request)
         ]
 
 

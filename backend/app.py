@@ -7,6 +7,7 @@ from aioinflux import InfluxDBClient
 from temp_sensor import TempSensor
 from gpio import Gpio
 from dosing_pump import DosingPump
+from kessil import KessilController, Pwm
 
 
 async def initialize_database(app):
@@ -33,10 +34,14 @@ async def shutdown_application(app):
 if __name__ == '__main__':
     app = web.Application()
     pump = Gpio(17, "gpio-pump")
+    pwm0 = Pwm(0)
+    pwm1 = Pwm(1)
+
     app['drivers'] = [
         TempSensor(path="/sys/class/hwmon/hwmon0/temp1_input"),
         pump,
-        DosingPump(pump, "dosing-pump")
+        DosingPump(pump, "pump"),
+        KessilController(pwm0, pwm1, "kessil")
     ]
 
     app.on_startup.append(initialize_application)

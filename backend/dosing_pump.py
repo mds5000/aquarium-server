@@ -15,7 +15,10 @@ class DoseEvent():
         return self.time < other.time_of_day
 
     def serialize(self):
-        return '{"time":{}, "duration":{}}'.format(self.time, self.duration)
+        return {
+            "time": self.time.isoformat(),
+            "duration": self.duration
+        }
 
 
 class DosingPump():
@@ -48,15 +51,35 @@ class DosingPump():
         finally:
             await self.gpio.set_state(False)
         
-
     def routes(self):
-        return []
+        return [
+            web.get('/api/{}'.format(self.name), self.get_request),
+            web.get('/api/{}/value'.format(self.name), self.value_request),
+            web.get('/api/{}/card'.format(self.name), self.card_request)
+        ]
 
     def return_config(self):
-        return web.json_request({
+        return web.json_response({
             "name": self.name,
             "gpio": self.gpio.path,
             "schedule": [event.serialize() for event in self.dose_events]
+        })
+
+    async def get_request(self, request):
+        return self.return_config()
+
+    async def value_request(self, request):
+        return web.json_response({
+            "time": datetime.datetime.now().time().isoformat(),
+            "next": 0,
+            "last": None
+        })
+
+    async def card_request(self, request):
+        return web.json_response({
+            "type": "dosing",
+            "name": self.name,
+            "profile": [e.serialize() for e in self.dose_events]
         })
 
     @staticmethod

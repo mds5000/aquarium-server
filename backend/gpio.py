@@ -110,11 +110,26 @@ class Gpio():
         await self.record_event(influx, state)
         return web.json_response({"state": state})
 
+    async def card_request(self, request):
+        influx = request.app["influx-db"]
+        resp = await influx.query(
+            """
+            SELECT LAST("value") FROM "events" 
+            WHERE "name"='{name}'
+            """.format(name=self.name)
+        )
+
+        return web.json_response({
+            "name": self.name,
+            "value": resp
+        })
+
     def routes(self):
         return [
             web.get('/api/{}'.format(self.name), self.get_request),
             web.get('/api/{}/value'.format(self.name), self.value_request),
-            web.put('/api/{}/value'.format(self.name), self.set_value_request)
+            web.put('/api/{}/value'.format(self.name), self.set_value_request),
+            web.get('/api/{}/card'.format(self.name), self.card_request),
         ]
 
     async def event_handler(self, app):
