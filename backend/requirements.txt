@@ -1,3 +1,8 @@
 aiohttp
 aiofiles
 aioinflux
+
+# Test only, put these in separate reqs
+pytest
+asynctest
+aiofastforward

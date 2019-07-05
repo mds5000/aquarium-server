@@ -121,7 +121,7 @@ class DosingPump():
 
             seconds_until_event = self.seconds_until(next_event.time, time_of_day)
             print("Seconds until dosing:", seconds_until_event)
-            if seconds_until_event < 10:
+            if seconds_until_event < 15:
                 await asyncio.sleep(seconds_until_event)
                 await self.dose_duration(next_event.duration)
                 await self.record_event(influx, next_event.duration)

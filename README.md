@@ -33,11 +33,8 @@ TEMP -> use kernel 1-wire
 
 
 # API
-/device {get, post, /id/}
-   /device/id/ {get, post, delete}
-   /device/id/value {get, post}
-/module {get, post, /id/}
-   /module/id/ {get, post, delete}
+/service(s) -> Get list of service & types
+   /module/id/
    /module/id/dashboard {get}
    /module/id/ ... specific module API
 
@@ -50,3 +47,10 @@ TEMP -> use kernel 1-wire
  # Support Tasks
  UDEV Rules for PWM devices
  NTP time sync
+
+# MVP
+ - Log Temperature
+ - Dosing Pump, static config
+ - Kessil profile
+ - Log measurements
+ - System install / start on reboot

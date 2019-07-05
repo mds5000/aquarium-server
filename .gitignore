@@ -1,3 +1,6 @@
 *.pyc
 **/__pycache__/**
+**/.pytest_cache/**
+.vscode/**
 venv/
+Python-3.7.0/**
