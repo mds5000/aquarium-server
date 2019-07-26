@@ -1,8 +1,11 @@
 import asyncio
+import json
 import datetime
 
 from aiohttp import web 
 from aioinflux import InfluxDBClient
+
+from .service import Service
 
 
 class ProfilePoint():
@@ -23,6 +26,14 @@ class ProfilePoint():
             "spectrum": self.spectrum,
             "intensity": self.intensity
         }
+    
+    @classmethod
+    def load(cls, source):
+        return cls(
+            time=datetime.time.fromisoformat(source["time"]),
+            intensity=source["intensity"],
+            spectrum=source["spectrum"]
+        )
 
     @staticmethod
     def seconds_until(then, now):
@@ -51,49 +62,60 @@ class ProfilePoint():
         return ProfilePoint(time_of_day, intensity, spectrum)
 
 
-class KessilController():
-    def __init__(self, spectrum, intensity, name):
-        self.spectrum = spectrum
-        self.intensity = intensity
-        self.name = name   
-        self.profile = [
-            ProfilePoint(datetime.time(5, 50, 0), 1, 0),
-            ProfilePoint(datetime.time(5, 55, 0), 1, 1),
-            ProfilePoint(datetime.time(6, 15, 0), 1, 0),
-            ProfilePoint(datetime.time(6, 16, 0), 0, 1),
-        ]
+class KessilController(Service):
+    def __init__(self, spectrum_pwm, intensity_pwm, name):
+        super().__init__(name)
+        self.spectrum = spectrum_pwm
+        self.intensity = intensity_pwm
+        self.profile = []
+        self.override = False
+        self.config = web.json_response({
+            "name": self.name,
+            "spectrum": self.spectrum.id(),
+            "intensity": self.intensity.id(),
+            "profile": [event.serialize() for event in self.profile]
+        })
 
-    def set_profile(self, points):
-        self.profile = sorted(points)
+        self.add_route(
+            web.get('/api/{}/card'.format(self.name), self.card_request),
+            web.get('/api/{}/profile'.format(self.name), self.get_profile_request),
+            web.post('/api/{}/profile'.format(self.name), self.post_profile_request),
+            web.post('/api/{}/override'.format(self.name), self.post_override_request)
+        )
 
-    def routes(self):
-        return [
-            web.get('/api/{}'.format(self.name), self.get_request),
-            web.get('/api/{}/value'.format(self.name), self.value_request),
-            web.get('/api/{}/card'.format(self.name), self.card_request)
-        ]
-
-    def return_config(self):
+    async def card_request(self, request):
         return web.json_response({
             "name": self.name,
-            "spectrum": self.spectrum.path,
-            "intensity": self.intensity.path,
-            "schedule": [event.serialize() for event in self.profile]
+            "profile": [p.serialize() for p in self.profile],
+            "override": False if self.override is False else self.override.serialize()
         })
 
-    async def record_event(self, db, state):
-        """ Add the event to the database """
-        return await db.write({
-            "measurement": "events",
-            "time": datetime.datetime.now(),
-            "tags": {"name": self.name},
-            "fields": {
-                "intensity": state.intensity, 
-                "spectrum": state.spectrum 
-            }
-        })
+    async def get_profile_request(self, request):
+        serialized_points = [point.serialize() for point in self.profile]
+        return web.json_response(serialized_points)
 
-    def get_prev_event(self, time_of_day):
+    async def post_profile_request(self, request):
+        db = request.app["influx-db"]
+        profile = await request.json()
+        if len(profile) == 0:
+            raise web.HTTPBadRequest()
+
+        profile_points = [ProfilePoint.load(point) for point in profile]
+        self.profile = sorted(profile_points)
+
+        serialized_points = [point.serialize() for point in self.profile]
+        await self.record_event(db, json.dumps(serialized_points))
+
+        return web.json_response(serialized_points)
+
+    async def post_override_request(self, request):
+        override_value = await request.json()
+        self.override = ProfilePoint.load(override_value)
+
+        return web.json_response(self.override.serialize())
+
+
+    def _prev_event(self, time_of_day):
         """Return the last event with a time less than the current time."""
         for event in reversed(self.profile):
             if event.time < time_of_day:
@@ -104,7 +126,7 @@ class KessilController():
 
         return None
 
-    def get_next_event(self, time_of_day):
+    def _next_event(self, time_of_day):
         """Return the next event with a time greater than the current time."""
         for event in self.profile:
             if event.time > time_of_day:
@@ -115,48 +137,41 @@ class KessilController():
 
         return None
 
-    async def get_request(self, request):
-        return self.return_config()
-
-    async def value_request(self, request):
-        spectrum = await self.spectrum.get_duty_cycle()
-        intensity = await self.intensity.get_duty_cycle()
-
-        return web.json_response({
-            "time": datetime.datetime.now().time().isoformat(),
-            "spectrum": spectrum,
-            "intensity": intensity
-        })
-
-    async def card_request(self, request):
-        return web.json_response({
-            "type": "kessil",
-            "name": self.name,
-            "profile": [p.serialize() for p in self.profile]
-        })
+    async def load_profile(self, db):
+        try:
+            _, profile = await self.get_last_event(db)
+            profile = json.loads(profile)
+            profile_points = [ProfilePoint.load(point) for point in profile]
+            return sorted(profile_points)
+        except:
+            print("FAILED TO LOAD PROFILE")
+            return []
 
     async def event_handler(self, app):
-        loop = asyncio.get_running_loop()
         influx = app["influx-db"]
+        self.profile = self.load_profile(influx)
 
-        while True:
+        while not self.shutdown.is_set():
             time_of_day = datetime.datetime.now().time()
-            next_event = self.get_next_event(time_of_day)
-            prev_event = self.get_prev_event(time_of_day)
 
-            if next_event is None:
-                await asyncio.sleep(10)
+            # Override settings if set
+            if self.override is not False:
+                if self.override.time < time_of_day:
+                    self.override = False
+                    continue
+
+                await self.spectrum.set_duty_cycle(self.override.spectrum)
+                await self.intensity.set_duty_cycle(self.override.intensity)
+                await asyncio.sleep(1)
                 continue
 
-            else:
+            next_event = self._next_event(time_of_day)
+            prev_event = self._prev_event(time_of_day)
+            if next_event is None:
                 await asyncio.sleep(1)
-                interp = prev_event.interpolate(next_event, time_of_day)
-                await self.spectrum.set_duty_cycle(interp.spectrum)
-                await self.intensity.set_duty_cycle(interp.intensity)
+                continue
 
-                if ProfilePoint.seconds_until(time_of_day, prev_event.time) == 0:
-                    print("Complteted POINT:", interp)
-                    await self.record_event(influx, interp)
-
-
-            
+            interp = prev_event.interpolate(next_event, time_of_day)
+            await self.spectrum.set_duty_cycle(interp.spectrum)
+            await self.intensity.set_duty_cycle(interp.intensity)
+            await asyncio.sleep(1)

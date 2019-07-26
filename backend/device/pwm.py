@@ -19,6 +19,9 @@ class PwmPin():
         with open(os.path.join(self.path, "period"), 'w') as period_file:
             period_file.write(str(period))
 
+    def id(self):
+        return self.path
+
     async def set_duty_cycle(self, duty_cycle):
         duty = int(duty_cycle * self.period * 1e9)
         async with aiofiles.open(os.path.join(self.path, "duty_cycle"), 'w') as dc_file:

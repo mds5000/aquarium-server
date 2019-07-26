@@ -29,6 +29,19 @@ class DosingPump():
             DoseEvent(datetime.time(4, 37, 0), 12),
             DoseEvent(datetime.time(4, 38, 3), 2)
         ]
+            web.get('/api/{}/card'.format(self.name), self.card_request)
+        return web.json_response({
+            "name": self.name,
+            "gpio": self.gpio.path,
+            "schedule": [event.serialize() for event in self.dose_events]
+        })
+
+    async def card_request(self, request):
+        return web.json_response({
+            "type": "dosing",
+            "name": self.name,
+            "profile": [e.serialize() for e in self.dose_events]
+        })
 
     def set_dosing_events(self, dose_events):
         self.dose_events = sorted(dose_events)
@@ -51,37 +64,6 @@ class DosingPump():
         finally:
             await self.gpio.set_state(False)
         
-    def routes(self):
-        return [
-            web.get('/api/{}'.format(self.name), self.get_request),
-            web.get('/api/{}/value'.format(self.name), self.value_request),
-            web.get('/api/{}/card'.format(self.name), self.card_request)
-        ]
-
-    def return_config(self):
-        return web.json_response({
-            "name": self.name,
-            "gpio": self.gpio.path,
-            "schedule": [event.serialize() for event in self.dose_events]
-        })
-
-    async def get_request(self, request):
-        return self.return_config()
-
-    async def value_request(self, request):
-        return web.json_response({
-            "time": datetime.datetime.now().time().isoformat(),
-            "next": 0,
-            "last": None
-        })
-
-    async def card_request(self, request):
-        return web.json_response({
-            "type": "dosing",
-            "name": self.name,
-            "profile": [e.serialize() for e in self.dose_events]
-        })
-
     @staticmethod
     def seconds_until(then, now):
         hours = then.hour - now.hour
@@ -97,15 +79,6 @@ class DosingPump():
             hours += 24
 
         return hours * 60 * 60 + minutes * 60 + seconds
-
-    async def record_event(self, db, state):
-        """ Add the event to the database """
-        return await db.write({
-            "measurement": "events",
-            "time": datetime.datetime.now(),
-            "tags": {"name": self.name},
-            "fields": {"value": state}
-        })
 
     async def event_handler(self, app):
         loop = asyncio.get_running_loop()
