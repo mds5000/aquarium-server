@@ -1,18 +1,19 @@
 import asyncio
 import datetime
-
-import time
+import json
 
 from aiohttp import web 
 
+from .service import Service
+
 
 class DoseEvent():
-    def __init__(self, time_of_day, duration):
-        self.time = time_of_day
+    def __init__(self, time, duration):
+        self.time = time
         self.duration = duration
 
     def __lt__(self, other):
-        return self.time < other.time_of_day
+        return self.time < other.time
 
     def serialize(self):
         return {
@@ -20,31 +21,61 @@ class DoseEvent():
             "duration": self.duration
         }
 
+    @classmethod
+    def load(cls, source):
+        return cls(
+            time=datetime.time.fromisoformat(source["time"]),
+            duration=source["duration"]
+        )
 
-class DosingPump():
+
+class DosingPump(Service):
     def __init__(self, gpio, name):
-        self.name = name
+        super().__init__(name)
         self.gpio = gpio
-        self.dose_events = [
-            DoseEvent(datetime.time(4, 37, 0), 12),
-            DoseEvent(datetime.time(4, 38, 3), 2)
-        ]
-            web.get('/api/{}/card'.format(self.name), self.card_request)
-        return web.json_response({
+        self.manual_dose = False
+        self.dose_events = []
+        self.config = web.json_response({
             "name": self.name,
-            "gpio": self.gpio.path,
-            "schedule": [event.serialize() for event in self.dose_events]
+            "gpio": self.gpio.id()
         })
+
+        self.add_route(
+            web.get('/api/{}/card'.format(self.name), self.card_request),
+            web.get('/api/{}/schedule'.format(self.name), self.get_schedule_request),
+            web.post('/api/{}/schedule'.format(self.name), self.post_schedule_request),
+            web.post('/api/{}/manual'.format(self.name), self.post_manual_request)
+        )
 
     async def card_request(self, request):
         return web.json_response({
-            "type": "dosing",
             "name": self.name,
-            "profile": [e.serialize() for e in self.dose_events]
+            "schedule": [e.serialize() for e in self.dose_events],
+            "manual": False if self.manual_dose is False else self.manual_dose.serialize()
         })
 
-    def set_dosing_events(self, dose_events):
+    async def get_schedule_request(self, request):
+        serialized_events = [event.serialize() for event in self.dose_events]
+        return web.json_response(serialized_events)
+
+    async def post_schedule_request(self, request):
+        db = request.app["influx-db"]
+
+        content = await request.json()
+        dose_events = [DoseEvent.load(event) for event in content]
         self.dose_events = sorted(dose_events)
+
+        serialized_events = [event.serialize() for event in self.dose_events]
+        await self.record_event(db, json.dumps(serialized_events))
+        return web.json_response(serialized_events)
+
+    async def post_manual_request(self, request):
+        if self.manual_dose is not False:
+            raise web.HTTPBadRequest()
+
+        content = await request.json()
+        self.manual_dose = DoseEvent.load(content)
+        return web.json_response(self.manual_dose.serialize())
 
     def get_next_event(self, time_of_day):
         """Return the next event with a time greater than the current time."""
@@ -81,27 +112,32 @@ class DosingPump():
         return hours * 60 * 60 + minutes * 60 + seconds
 
     async def event_handler(self, app):
-        loop = asyncio.get_running_loop()
         influx = app["influx-db"]
 
-        while True:
+        while not self.shutdown_event.is_set():
             time_of_day = datetime.datetime.now().time()
-            next_event = self.get_next_event(time_of_day)
 
+            if self.manual_dose is not False:
+                duration = self.manual_dose.duration
+                await self.dose_duration(duration)
+                await self.record_event(influx, duration)
+                self.manual_dose = False
+
+            next_event = self.get_next_event(time_of_day)
             if next_event is None:
                 await asyncio.sleep(10)
                 continue
 
             seconds_until_event = self.seconds_until(next_event.time, time_of_day)
-            print("Seconds until dosing:", seconds_until_event)
             if seconds_until_event < 15:
                 await asyncio.sleep(seconds_until_event)
                 await self.dose_duration(next_event.duration)
                 await self.record_event(influx, next_event.duration)
-                print("Completed dosing:", next_event.duration)
-
             else:
                 await asyncio.sleep(10)
+
+        # If the loop is somehow exited, shutdown the pump
+        await self.gpio.set_state(False)
 
             
 

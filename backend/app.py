@@ -4,10 +4,10 @@ import os
 from aiohttp import web 
 from aioinflux import InfluxDBClient
 
-from temp_sensor import TempSensor
-from gpio import Gpio
-from dosing_pump import DosingPump
-from kessil import KessilController, Pwm
+from .device import HwmonDevice, GpioPin, PwmPin
+from .sensor import AnalogSensor
+from .dosing_pump import DosingPump
+from .kessil import KessilController
 
 
 async def initialize_database(app):
@@ -20,27 +20,26 @@ async def initialize_database(app):
 
 async def initialize_application(app):
     loop = asyncio.get_event_loop()
-    for driver in app['drivers']:
+    for driver in app['services']:
         loop.create_task(driver.event_handler(app))
         app.add_routes(driver.routes())
 
 async def shutdown_application(app):
-    drivers = app.get('drivers', [])
+    drivers = app.get('services', [])
     done, pending = await asyncio.wait(drivers, timeout=5.0)
     for task in pending:
         print("Failed to stop Task", task)
 
-
-if __name__ == '__main__':
+def main():
     app = web.Application()
-    pump = Gpio(17, "gpio-pump")
-    pwm0 = Pwm(0)
-    pwm1 = Pwm(1)
+    pin17 = GpioPin(17)
+    pwm0 = PwmPin(0)
+    pwm1 = PwmPin(1)
+    temp_sensor = HwmonDevice("temp1_input")
 
-    app['drivers'] = [
-        TempSensor(path="/sys/class/hwmon/hwmon0/temp1_input"),
-        pump,
-        DosingPump(pump, "pump"),
+    app['services'] = [
+        AnalogSensor(temp_sensor, "temperature"),
+        DosingPump(pin17, "pump"),
         KessilController(pwm0, pwm1, "kessil")
     ]
 
@@ -49,3 +48,6 @@ if __name__ == '__main__':
     #app.on_shutdown.append(shutdown_application)
 
     web.run_app(app)
+
+if __name__ == '__main__':
+    main()

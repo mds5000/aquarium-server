@@ -3,7 +3,7 @@ import asyncio
 from aiohttp import web 
 from aioinflux import InfluxDBClient
 
-from backend.service import Service
+from .service import Service
 
 class Switch(Service):
     def __init__(self, pin, name):

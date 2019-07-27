@@ -49,7 +49,6 @@ async def test_kessil_get(aiohttp_client, test_app, mock_device):
     assert content["name"] == TEST_NAME
     assert content["spectrum"] == mock_device.id.return_value
     assert content["intensity"] == mock_device.id.return_value
-    assert content["profile"] == []
     
 async def test_kessil_card(aiohttp_client, test_app, mock_device):
     kessil = KessilController(mock_device, mock_device, TEST_NAME)

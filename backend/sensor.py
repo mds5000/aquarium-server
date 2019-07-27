@@ -6,7 +6,7 @@ import aiofiles
 from aiohttp import web 
 from aioinflux import InfluxDBClient
 
-from backend.service import Service
+from .service import Service
 
 
 class AnalogSensor(Service):
@@ -40,7 +40,7 @@ class AnalogSensor(Service):
             "time": time
         })
 
-    async def event_handler(self, app, shutdown):
+    async def event_handler(self, app):
         """
         The handler loop for a temperature sensor.
 
@@ -49,7 +49,7 @@ class AnalogSensor(Service):
         loop = asyncio.get_running_loop()
         influx = app["influx-db"]
 
-        while not shutdown.is_set():
+        while self.shutdown_event.is_set():
             tick = loop.time()
 
             temp = await self.sensor.read_value()

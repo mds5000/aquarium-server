@@ -3,7 +3,6 @@ import json
 import datetime
 
 from aiohttp import web 
-from aioinflux import InfluxDBClient
 
 from .service import Service
 
@@ -72,8 +71,7 @@ class KessilController(Service):
         self.config = web.json_response({
             "name": self.name,
             "spectrum": self.spectrum.id(),
-            "intensity": self.intensity.id(),
-            "profile": [event.serialize() for event in self.profile]
+            "intensity": self.intensity.id()
         })
 
         self.add_route(
@@ -149,9 +147,9 @@ class KessilController(Service):
 
     async def event_handler(self, app):
         influx = app["influx-db"]
-        self.profile = self.load_profile(influx)
+        self.profile = await self.load_profile(influx)
 
-        while not self.shutdown.is_set():
+        while not self.shutdown_event.is_set():
             time_of_day = datetime.datetime.now().time()
 
             # Override settings if set
