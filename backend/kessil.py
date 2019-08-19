@@ -1,10 +1,14 @@
 import asyncio
 import json
 import datetime
+import logging
 
 from aiohttp import web 
 
 from .service import Service
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProfilePoint():
@@ -68,11 +72,12 @@ class KessilController(Service):
         self.intensity = intensity_pwm
         self.profile = []
         self.override = False
-        self.config = web.json_response({
+        self.config = {
             "name": self.name,
+            "type": "KessilController",
             "spectrum": self.spectrum.id(),
             "intensity": self.intensity.id()
-        })
+        }
 
         self.add_route(
             web.get('/api/{}/card'.format(self.name), self.card_request),
@@ -142,12 +147,14 @@ class KessilController(Service):
             profile_points = [ProfilePoint.load(point) for point in profile]
             return sorted(profile_points)
         except:
-            print("FAILED TO LOAD PROFILE")
             return []
 
     async def event_handler(self, app):
+        self.log.info("Starting event handler.")
+
         influx = app["influx-db"]
         self.profile = await self.load_profile(influx)
+        self.log.info("Loaded profile from database; %d points loaded.", len(self.profile))
 
         while not self.shutdown_event.is_set():
             time_of_day = datetime.datetime.now().time()
@@ -173,3 +180,5 @@ class KessilController(Service):
             await self.spectrum.set_duty_cycle(interp.spectrum)
             await self.intensity.set_duty_cycle(interp.intensity)
             await asyncio.sleep(1)
+
+        self.log.info("Stopped event handler.")

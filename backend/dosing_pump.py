@@ -35,10 +35,11 @@ class DosingPump(Service):
         self.gpio = gpio
         self.manual_dose = False
         self.dose_events = []
-        self.config = web.json_response({
+        self.config = {
             "name": self.name,
+            "type": "DosingPump",
             "gpio": self.gpio.id()
-        })
+        }
 
         self.add_route(
             web.get('/api/{}/card'.format(self.name), self.card_request),
@@ -89,6 +90,7 @@ class DosingPump(Service):
         return None
 
     async def dose_duration(self, duration):
+        self.log.debug("Executing dose for %d seconds.", duration)
         try:
             await self.gpio.set_state(True)
             await asyncio.sleep(duration)
@@ -112,6 +114,7 @@ class DosingPump(Service):
         return hours * 60 * 60 + minutes * 60 + seconds
 
     async def event_handler(self, app):
+        self.log.info("Starting event handler.")
         influx = app["influx-db"]
 
         while not self.shutdown_event.is_set():
@@ -138,7 +141,4 @@ class DosingPump(Service):
 
         # If the loop is somehow exited, shutdown the pump
         await self.gpio.set_state(False)
-
-            
-
-
+        self.log.info("Stopped event handler.")

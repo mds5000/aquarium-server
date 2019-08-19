@@ -1,5 +1,6 @@
 import asyncio
 import os.path
+import logging
 from datetime import datetime
 
 import aiofiles
@@ -8,17 +9,21 @@ from aioinflux import InfluxDBClient
 
 from .service import Service
 
+logger = logging.getLogger(__name__)
+
 
 class AnalogSensor(Service):
     def __init__(self, sensor, name, period=60):
         super().__init__(name)
         self.sensor = sensor
         self.period = period
-        self.config = web.json_response({
+        self.config = {
             "name": self.name,
+            "type": "AnalogSensor",
+            "unit": "C",
             "sensor": self.sensor.id(),
             "period": self.period
-        })
+        }
         self.add_route(
             web.get('/api/{}/card'.format(self.name), self.card_request)
         )
@@ -49,11 +54,13 @@ class AnalogSensor(Service):
         loop = asyncio.get_running_loop()
         influx = app["influx-db"]
 
-        while self.shutdown_event.is_set():
+        self.log.info("Starting event handler.")
+        while not self.shutdown_event.is_set():
             tick = loop.time()
 
             temp = await self.sensor.read_value()
             await self.record_sample(influx, temp)
+            self.log.debug("Aquired sample: %f", temp)
 
             elapsed = loop.time() - tick
 
@@ -62,3 +69,5 @@ class AnalogSensor(Service):
                 next_call = 0
 
             await asyncio.sleep(next_call)
+
+        self.log.info("Stopped event handler.")

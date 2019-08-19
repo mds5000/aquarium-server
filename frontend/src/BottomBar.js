@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { withStyles } from '@material-ui/core/styles';
 import BottomNavigation from '@material-ui/core/BottomNavigation';
 import BottomNavigationAction from '@material-ui/core/BottomNavigationAction';
@@ -35,9 +36,9 @@ class BottomBar extends React.Component {
         showLabels
         className={classes.root}
       >
-        <BottomNavigationAction label="Home" icon={<HomeIcon />} />
-        <BottomNavigationAction label="Charts" icon={<ShowChartIcon />} />
-        <BottomNavigationAction label="Settings" icon={<SettingsSharpIcon />} />
+        <BottomNavigationAction label="Home" icon={<HomeIcon/>} to="/" component={Link} />
+        <BottomNavigationAction label="Charts" icon={<ShowChartIcon/>} to="/charts" component={Link} />
+        <BottomNavigationAction label="Settings" icon={<SettingsSharpIcon/>} to="/settings" component={Link} />
       </BottomNavigation>
     );
   }

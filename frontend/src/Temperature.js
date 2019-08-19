@@ -28,7 +28,7 @@ class Temperature extends React.Component {
   };
 
   componentDidMount() {
-      fetch("api/temperature")
+      fetch("api/temperature/card")
       .then( res => {
           return res.json();
       }).then( data => {

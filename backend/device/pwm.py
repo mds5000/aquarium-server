@@ -3,21 +3,28 @@ import aiofiles
 import os.path
 
 class PwmPin():
-    def __init__(self, channel, period=1000000, root="/sys/class/pwm"):
+    def __init__(self, channel, period=1000000, root="/sys/class/pwm/pwmchip0"):
         """
         """
         self.path = os.path.join(root, "pwm{}".format(channel))
         if not os.path.exists(self.path):
-            raise RuntimeError("PWM Channel not available, is 'pwm-2chan' added to /boot/config.txt")
+            self._export_pwm(root, channel)
 
         self._initialize_pwm(period)
-    
+
+    def _export_pwm(self, root, pin):
+        with open(os.path.join(root, "export"), 'w') as export:
+            export.write("{}\n".format(pin))
+        if not os.path.exists(self.path):
+            raise RuntimeError("PWM Channel not available, is 'pwm-2chan' added to /boot/config.txt")
+
     def _initialize_pwm(self, period):
         self.period = period / 1.0e9
-        with open(os.path.join(self.path, "enable"), 'w') as enable:
-            enable.write("1")
         with open(os.path.join(self.path, "period"), 'w') as period_file:
             period_file.write(str(period))
+        # Note: The period must be valid before a channel can be enabled.
+        with open(os.path.join(self.path, "enable"), 'w') as enable:
+            enable.write("1")
 
     def id(self):
         return self.path

@@ -9,10 +9,11 @@ class Switch(Service):
     def __init__(self, pin, name):
         super().__init__(name)
         self.pin = pin
-        self.config = web.json_response({
+        self.config = {
             "name": self.name,
+            "type": "Switch",
             "device": self.pin.id()
-        })
+        }
         self.add_route(
             web.get('/api/{}/state'.format(self.name), self.get_state_request),
             web.post('/api/{}/state'.format(self.name), self.set_state_request),
@@ -28,7 +29,7 @@ class Switch(Service):
         Returns 405 - Method Not Allowed if GPIO is set as input
         """
         if self.pin.direction() == 'in':
-            raise web.HTTPMethodNotAllowed()
+            raise web.HTTPMethodNotAllowed(allowed_methods="GET")
 
         state = (await request.post()).get("state")
         if state is None:

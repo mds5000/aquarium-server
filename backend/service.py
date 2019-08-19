@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 
 from aiohttp import web 
@@ -7,11 +8,13 @@ from aioinflux import InfluxDBClient
 
 class Service():
     def __init__(self, name):
+        self.log = logging.getLogger("Service[{}]".format(name))
         self.name = name
         self.shutdown_event = asyncio.Event()
-        self.config = web.json_response({
-            "name": self.name
-        })
+        self.config = {
+            "name": self.name,
+            "type": "UnknownService"
+        }
         self._routes = [
             web.get('/api/{}'.format(self.name), self.get_request),
             web.get('/api/{}/query'.format(self.name), self.query_request)

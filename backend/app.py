@@ -1,5 +1,6 @@
 import asyncio
 import os
+import logging
 
 from aiohttp import web 
 from aioinflux import InfluxDBClient
@@ -7,7 +8,10 @@ from aioinflux import InfluxDBClient
 from .device import HwmonDevice, GpioPin, PwmPin
 from .sensor import AnalogSensor
 from .dosing_pump import DosingPump
+from .switch import Switch
 from .kessil import KessilController
+
+logger = logging.getLogger(__name__)
 
 
 async def initialize_database(app):
@@ -30,24 +34,51 @@ async def shutdown_application(app):
     for task in pending:
         print("Failed to stop Task", task)
 
+async def list_services(request):
+    services = request.app["services"]
+    return web.json_response(
+        {"services": [service.config for service in services]}
+    )
+
 def main():
+    logging.basicConfig(format='%(name)s-%(levelname)s: %(message)s', level=logging.DEBUG)
+    logger.info("Starting aquarium server.")
+
     app = web.Application()
-    pin17 = GpioPin(17)
+    switch_1 = GpioPin(26)
+    switch_2 = GpioPin(20)
+    switch_3 = GpioPin(19)
+    switch_4 = GpioPin(23)
+    switch_5 = GpioPin(27)
+    switch_6 = GpioPin(17)
+
+    led_0 = GpioPin(16)
+    led_1 = GpioPin(24)
+
     pwm0 = PwmPin(0)
     pwm1 = PwmPin(1)
+
     temp_sensor = HwmonDevice("temp1_input")
+    #ph_sensor = HwmonDevice()
+    #system_temp_sensor
+    #humidity_sensor
 
     app['services'] = [
         AnalogSensor(temp_sensor, "temperature"),
-        DosingPump(pin17, "pump"),
+        DosingPump(switch_1, "kalk"),
+        DosingPump(switch_2, "calcium"),
+        Switch(led_0, "led"),
         KessilController(pwm0, pwm1, "kessil")
     ]
 
+    app.router.add_get("/api/services", list_services)
     app.on_startup.append(initialize_application)
     app.on_startup.append(initialize_database)
     #app.on_shutdown.append(shutdown_application)
 
-    web.run_app(app)
+    port = 3001
+    logger.info("Starting Server...")
+    web.run_app(app, port=port, access_log=logger)
 
 if __name__ == '__main__':
     main()

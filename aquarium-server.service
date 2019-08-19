@@ -1,0 +1,11 @@
+[Unit]
+Description=Aquarium Server (Python Backend)
+
+[Service]
+ExecStart=/home/pi/aquarium-server/venv/bin/backend_server
+WorkingDirectory=/home/pi/aquarium-server/backend/
+StandardOut=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
