@@ -45,7 +45,7 @@ class Temperature extends React.Component {
 
     var disp = (
         <div className={classes.temp}>
-          {value}
+          {value * 9/5 + 32}
           <span style={{fontSize: 20, position: "relative", bottom: -20}}>&deg;F</span>
         </div>
     );

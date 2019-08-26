@@ -1,17 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import useFetch from 'react-fetch-hook';
+import React from 'react';
+import { useFetch } from 'react-async';
 import { BrowserRouter as Router, Route } from 'react-router-dom';
-import { withStyles } from '@material-ui/core/styles';
 import CssBaseline from '@material-ui/core/CssBaseline';
-import Paper from '@material-ui/core/Paper';
-import Grid from '@material-ui/core/Grid';
 
 import BottomBar from './BottomBar';
 import Temperature from './Temperature';
+import Switch from './Switch';
+import DosingPump from './DosingPump';
 
 
 function App(props) {
-  const { classes } = props;
   return (
     <Router>
       <CssBaseline />
@@ -24,15 +22,14 @@ function App(props) {
 };
 
 function ServicesList() {
-  const SERVICES_API = "/api/services"
-  const fetch = useFetch(SERVICES_API);
+  const SERVICES_URL = "/api/services"
+  const {data, isLoading} = useFetch(SERVICES_URL, {headers: {Accept: "application/json"}});
 
-  if (fetch.isLoading) {
+  if (isLoading) {
     return <div> Still loading... </div>;
   }
 
-  const services = fetch.data && fetch.data.services || [];
-
+  const services = data && data.services;
   const cards = services.map((props) => {
     switch (props.type) {
     case "AnalogSensor":
@@ -40,6 +37,7 @@ function ServicesList() {
     case "Switch": 
       return <Switch key={props.name} {...props} />;
     case "DosingPump":
+      return <DosingPump key={props.name} {...props} />;
     case "KessilController":
     default:
       console.log(`Unknown service of type '${props.type}'`);
@@ -54,10 +52,6 @@ function ServicesList() {
     </div>
   )
 };
-
-function Switch(props) {
-  return <div>Switch</div>
-}
 
 function Settings(props) {
   return (
