@@ -22,10 +22,17 @@ class DoseEvent():
         }
 
     @classmethod
-    def load(cls, source):
+    def Load(cls, source):
         return cls(
             time=datetime.time.fromisoformat(source["time"]),
-            duration=source["duration"]
+            duration=float(source["duration"])
+        )
+    
+    @classmethod
+    def Now(cls, duration):
+        return cls(
+            time=datetime.time(),
+            duration=float(duration)
         )
 
 
@@ -33,8 +40,8 @@ class DosingPump(Service):
     def __init__(self, gpio, name):
         super().__init__(name)
         self.gpio = gpio
-        self.manual_dose = False
         self.dose_events = []
+        self.calibration = 1.66 # mL / Second
         self.config = {
             "name": self.name,
             "type": "DosingPump",
@@ -52,7 +59,7 @@ class DosingPump(Service):
         return web.json_response({
             "name": self.name,
             "schedule": [e.serialize() for e in self.dose_events],
-            "manual": False if self.manual_dose is False else self.manual_dose.serialize()
+            "calibration": self.calibration
         })
 
     async def get_schedule_request(self, request):
@@ -63,20 +70,50 @@ class DosingPump(Service):
         db = request.app["influx-db"]
 
         content = await request.json()
-        dose_events = [DoseEvent.load(event) for event in content]
+        self.log.debug("Dosing update requested: %r", content)
+        dose_events = [DoseEvent.Load(event) for event in content]
         self.dose_events = sorted(dose_events)
 
         serialized_events = [event.serialize() for event in self.dose_events]
-        await self.record_event(db, json.dumps(serialized_events))
+        await self.record_event(db, "schedule", json.dumps(serialized_events))
+        self.log.info("Updated dosing schedule: %s", json.dumps(serialized_events))
+
         return web.json_response(serialized_events)
 
     async def post_manual_request(self, request):
-        if self.manual_dose is not False:
+        """ Handle a manual dose event request.
+        
+        Expects JSON request:
+        {
+            "duration": [float] seconds to dose
+            "volume": [float] mL to dose
+            "purge": [bool] if true, don't record the event
+        }
+        Only one of 'duration' or 'volume' should be included.
+
+        Raises: HTTPBadRequest on invalid or missing payload.
+        """
+        db = request.app["influx-db"]
+        content = await request.json()
+        purge = content.get("purge", False)
+
+        duration = 0
+        duration = content.get("duration")
+        volume = content.get("volume")
+        if volume is not None:
+            volume = float(volume)
+            duration = volume / self.calibration
+
+        if duration is None and volume is None:
             raise web.HTTPBadRequest()
 
-        content = await request.json()
-        self.manual_dose = DoseEvent.load(content)
-        return web.json_response(self.manual_dose.serialize())
+        duration = float(duration)
+        if purge:
+            asyncio.create_task(self.dose_duration(duration))
+        else:
+            asyncio.create_task(self.record_dose(duration, db))
+
+        return web.json_response({"duration": duration, "volume": volume})
 
     def get_next_event(self, time_of_day):
         """Return the next event with a time greater than the current time."""
@@ -96,6 +133,10 @@ class DosingPump(Service):
             await asyncio.sleep(duration)
         finally:
             await self.gpio.set_state(False)
+
+    async def record_dose(self, duration, db):
+        await self.dose_duration(duration)
+        await self.record_event(db, "dose", duration)
         
     @staticmethod
     def seconds_until(then, now):
@@ -113,18 +154,23 @@ class DosingPump(Service):
 
         return hours * 60 * 60 + minutes * 60 + seconds
 
+    async def load_schedule(self, db):
+        try:
+            _, schedule = await self.get_last(db, "schedule")
+            schedule = json.loads(schedule)
+            schedule = [DoseEvent.Load(event) for event in schedule]
+            return sorted(schedule)
+        except:
+            return []
+
     async def event_handler(self, app):
         self.log.info("Starting event handler.")
         influx = app["influx-db"]
+        self.dose_events = await self.load_schedule(influx)
+        self.log.info("Loaded dose schedule from database; %d events loaded.", len(self.dose_events))
 
         while not self.shutdown_event.is_set():
             time_of_day = datetime.datetime.now().time()
-
-            if self.manual_dose is not False:
-                duration = self.manual_dose.duration
-                await self.dose_duration(duration)
-                await self.record_event(influx, duration)
-                self.manual_dose = False
 
             next_event = self.get_next_event(time_of_day)
             if next_event is None:
@@ -134,8 +180,7 @@ class DosingPump(Service):
             seconds_until_event = self.seconds_until(next_event.time, time_of_day)
             if seconds_until_event < 15:
                 await asyncio.sleep(seconds_until_event)
-                await self.dose_duration(next_event.duration)
-                await self.record_event(influx, next_event.duration)
+                await self.record_dose(next_event.duration, influx)
             else:
                 await asyncio.sleep(10)
 

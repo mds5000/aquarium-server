@@ -28,29 +28,35 @@ GPIO 17 - Pump
 
 ## Drivers
 PWM -> rpi use kernel PWM functionality, create a test PWM class that serves as an indicator
-GPIO -> use kernel PMW
+GPIO -> use kernel gpio
 TEMP -> use kernel 1-wire 
 
+## Influx Database
 
 # API
-/service(s) -> Get list of service & types
-   /module/id/
-   /module/id/dashboard {get}
-   /module/id/ ... specific module API
+/api
+   /<name>
+   /<name>/
+   /<name>/
 
 # TODO:
- - simplify card result dictionary to single value
- - logging infra
- - START FRONT_END
- - system events
+- Remove 'calibration' from Hwmon driver
+- convert dosing pump to volume instead of duration, with pump calibration
+- delete influx telagraph db
+- delete aquarium db
 
- # Support Tasks
- UDEV Rules for PWM devices
- NTP time sync
+- System Monitor
+   -- Driver for Si7006
+   -- Driver for psutils
+      - cpu percentage
+      - mem free
+      - disk free
+      - system uptime
+      - app uptime
+   -- git hash/app version
+   -- Heartbeat LED
+   -- Card endpoint
 
-# MVP
- - Log Temperature
- - Dosing Pump, static config
- - Kessil profile
- - Log measurements
- - System install / start on reboot
+- setup nginx, reverse-proxy
+
+

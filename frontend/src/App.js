@@ -7,6 +7,7 @@ import BottomBar from './BottomBar';
 import Temperature from './Temperature';
 import Switch from './Switch';
 import DosingPump from './DosingPump';
+import { Grid } from '@material-ui/core';
 
 
 function App(props) {
@@ -33,11 +34,11 @@ function ServicesList() {
   const cards = services.map((props) => {
     switch (props.type) {
     case "AnalogSensor":
-      return <Temperature key={props.name} {...props} />;
+      return <Grid item key={props.name}><Temperature {...props} /></Grid>;
     case "Switch": 
-      return <Switch key={props.name} {...props} />;
+      return <Grid item key={props.name}><Switch {...props} /></Grid>;
     case "DosingPump":
-      return <DosingPump key={props.name} {...props} />;
+      return <Grid item key={props.name}><DosingPump {...props} /></Grid>;
     case "KessilController":
     default:
       console.log(`Unknown service of type '${props.type}'`);
@@ -47,9 +48,9 @@ function ServicesList() {
   const card_items = cards.filter(x => x ? true : false);
 
   return (
-    <div>
+    <Grid container direction='column' spacing='2'>
       {card_items}
-    </div>
+    </Grid>
   )
 };
 

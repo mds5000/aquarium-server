@@ -12,18 +12,22 @@ function DoseEventDisplay(props) {
 }
 
 function ManualDoseSwitch(props) {
-    const postDoseEvent = () => {
+    const ml_per_second = 1.666
+    const postDoseEvent = (duration) => { 
+        return function() {
+        console.log("Dose: ", duration);
         fetch(`/api/${props.name}/manual`, {
             method: 'POST',
             headers: {Accept: 'application/json'},
-            body: JSON.stringify({time: "00:00:00", duration: 5})
+            body: JSON.stringify({time: "00:00:00", 'duration': duration})
         });
+        }
     }
     return (
         <ButtonGroup size='small'>
-            <Button onClick={postDoseEvent}>1mL</Button>
-            <Button>5mL</Button>
-            <Button>10mL</Button>
+            <Button onClick={postDoseEvent(1/ml_per_second)}>1mL</Button>
+            <Button onClick={postDoseEvent(5/ml_per_second)}>5mL</Button>
+            <Button onClick={postDoseEvent(10/ml_per_second)}>10mL</Button>
         </ButtonGroup>
     )
 }

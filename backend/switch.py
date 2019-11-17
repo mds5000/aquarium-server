@@ -23,7 +23,7 @@ class Switch(Service):
     async def set_state_request(self, request):
         """Set the state of the GPIO.
 
-        Form Parameter:
+        JSON field:
             - "state": "true" or "false"
         
         Returns 405 - Method Not Allowed if GPIO is set as input
@@ -31,21 +31,14 @@ class Switch(Service):
         if self.pin.direction() == 'in':
             raise web.HTTPMethodNotAllowed(allowed_methods="GET")
 
-        state = (await request.post()).get("state")
+        state = (await request.json()).get("state")
         if state is None:
-            #TODO LOG
-            raise web.HTTPBadRequest()
-        if state.lower() == 'true':
-            state = True
-        elif state.lower() == 'false':
-            state = False
-        else:
             #TODO LOG
             raise web.HTTPBadRequest()
 
         influx = request.app["influx-db"]
         await self.pin.set_state(state)
-        await self.record_event(influx, state)
+        await self.record_event(influx, "state", state)
         return web.json_response({"state": state})
 
     async def get_state_request(self, request):
@@ -54,7 +47,7 @@ class Switch(Service):
 
     async def card_request(self, request):
         influx = request.app["influx-db"]
-        last = await self.get_last_event(influx)
+        last = await self.get_last(influx, "state")
 
         if last is None:
             return web.json_response({
@@ -72,11 +65,11 @@ class Switch(Service):
         influx = app["influx-db"]
         
         # Reset GPIO output on start-up to most recent state
-        last = await self.get_last_event(influx)
+        last = await self.get_last(influx, "state")
         if last is None:
             state = False
         else:
             state = last[1]
         
         await self.pin.set_state(state)
-        await self.record_event(influx, state)
+        await self.record_event(influx, "state", state)

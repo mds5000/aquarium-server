@@ -6,7 +6,7 @@ from aiohttp import web
 from aioinflux import InfluxDBClient
 
 from .device import HwmonDevice, GpioPin, PwmPin
-from .sensor import AnalogSensor
+from .sensor import AnalogSensor, CalibratableSensor
 from .dosing_pump import DosingPump
 from .switch import Switch
 from .kessil import KessilController
@@ -41,7 +41,7 @@ async def list_services(request):
     )
 
 def main():
-    logging.basicConfig(format='%(name)s-%(levelname)s: %(message)s', level=logging.DEBUG)
+    logging.basicConfig(format='%(levelname)-6s [%(name)s]: %(message)s', level=logging.DEBUG)
     logger.info("Starting aquarium server.")
 
     app = web.Application()
@@ -58,17 +58,19 @@ def main():
     pwm0 = PwmPin(0)
     pwm1 = PwmPin(1)
 
-    temp_sensor = HwmonDevice("temp1_input")
-    #ph_sensor = HwmonDevice()
+    temp_sensor = HwmonDevice("temp1_input", "/sys/class/hwmon/hwmon0")
+    ph_sensor = HwmonDevice("in3_input", "/sys/class/hwmon/hwmon1/device")
     #system_temp_sensor
     #humidity_sensor
 
     app['services'] = [
-        AnalogSensor(temp_sensor, "temperature"),
-        DosingPump(switch_1, "kalk"),
-        DosingPump(switch_2, "calcium"),
-        Switch(led_0, "led"),
-        KessilController(pwm0, pwm1, "kessil")
+        AnalogSensor(temp_sensor, "temperature", unit="F", scaling=[1.8, 32]),
+        CalibratableSensor(ph_sensor, "ph", unit="pH", scaling=[-16.903313, 7]),
+        DosingPump(switch_6, "kalk"),
+        DosingPump(switch_5, "calcium"),
+        Switch(led_0, "red_led"),
+        Switch(led_1, "green_led"),
+        KessilController(pwm1, pwm0, "kessil")
     ]
 
     app.router.add_get("/api/services", list_services)

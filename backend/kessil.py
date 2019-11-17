@@ -34,8 +34,8 @@ class ProfilePoint():
     def load(cls, source):
         return cls(
             time=datetime.time.fromisoformat(source["time"]),
-            intensity=source["intensity"],
-            spectrum=source["spectrum"]
+            intensity=float(source["intensity"]),
+            spectrum=float(source["spectrum"])
         )
 
     @staticmethod
@@ -58,6 +58,9 @@ class ProfilePoint():
         time_delta = self.seconds_until(next.time, self.time)
         time_until = self.seconds_until(next.time, time_of_day)
         time_since = self.seconds_until(time_of_day, self.time)
+
+        if time_delta == 0:
+            return self
 
         intensity = (self.intensity * time_until + next.intensity * time_since) / time_delta
         spectrum = (self.spectrum * time_until + next.spectrum * time_since) / time_delta
@@ -98,8 +101,20 @@ class KessilController(Service):
         return web.json_response(serialized_points)
 
     async def post_profile_request(self, request):
+        """ Updated the daily Kessil Profile.
+
+        Json Body:
+        [
+            {"time":"15:00:00", "spectrum": 0.3, "intensity": 0.66},
+            { ... }
+        ]
+
+        """
+        #TODO: Handle invalid JSON/bad payload gracefully w/ error message
         db = request.app["influx-db"]
         profile = await request.json()
+        self.log.debug("Profile update requested: %r", profile)
+
         if len(profile) == 0:
             raise web.HTTPBadRequest()
 
@@ -107,13 +122,29 @@ class KessilController(Service):
         self.profile = sorted(profile_points)
 
         serialized_points = [point.serialize() for point in self.profile]
-        await self.record_event(db, json.dumps(serialized_points))
+        await self.record_event(db, "profile", json.dumps(serialized_points))
+        self.log.info("Updated Kessil profile: %s", json.dumps(serialized_points))
 
         return web.json_response(serialized_points)
 
     async def post_override_request(self, request):
         override_value = await request.json()
         self.override = ProfilePoint.load(override_value)
+        self.log.info("User override of light settings: Spec. %d%%, Inten. %d%%.",
+                      self.override.spectrum * 100,
+                      self.override.intensity * 100)
+        await self.spectrum.set_duty_cycle(self.override.spectrum)
+        await self.intensity.set_duty_cycle(self.override.intensity)
+
+        loop = asyncio.get_running_loop()
+        time_of_day = datetime.datetime.now().time()
+        cancel_delay = ProfilePoint.seconds_until(self.override.time, time_of_day)
+        self.log.info("  override expires in %d seconds", cancel_delay)
+
+        def cancel_override(self):
+            self.override = False
+            self.log.info("User override expired.")
+        loop.call_later(cancel_delay, cancel_override, self)
 
         return web.json_response(self.override.serialize())
 
@@ -142,7 +173,7 @@ class KessilController(Service):
 
     async def load_profile(self, db):
         try:
-            _, profile = await self.get_last_event(db)
+            _, profile = await self.get_last(db, "profile")
             profile = json.loads(profile)
             profile_points = [ProfilePoint.load(point) for point in profile]
             return sorted(profile_points)
@@ -159,14 +190,7 @@ class KessilController(Service):
         while not self.shutdown_event.is_set():
             time_of_day = datetime.datetime.now().time()
 
-            # Override settings if set
             if self.override is not False:
-                if self.override.time < time_of_day:
-                    self.override = False
-                    continue
-
-                await self.spectrum.set_duty_cycle(self.override.spectrum)
-                await self.intensity.set_duty_cycle(self.override.intensity)
                 await asyncio.sleep(1)
                 continue
 

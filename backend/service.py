@@ -8,7 +8,7 @@ from aioinflux import InfluxDBClient
 
 class Service():
     def __init__(self, name):
-        self.log = logging.getLogger("Service[{}]".format(name))
+        self.log = logging.getLogger("Service<{}>".format(name))
         self.name = name
         self.shutdown_event = asyncio.Event()
         self.config = {
@@ -29,26 +29,29 @@ class Service():
     def shutdown(self):
         self.shutdown_event.set()
 
-    async def record_data(self, db, measurement, value, time=None):
+    async def record_data(self, db, key, value, time=None, **tags):
         if time is None:
             time = datetime.now()
+        tags["service"] = self.name
         return await db.write({
-            "measurement": measurement,
+            "measurement": "records",
             "time": time,
-            "tags": {"name": self.name},
-            "fields": {"value": value}
+            "tags": tags,
+            "fields": {key: value}
         })
 
-    def record_sample(self, db, value):
-        return self.record_data(db, "samples", value)
+    def record_sample(self, db, name, value, **tags):
+        tags["kind"] = "sample"
+        return self.record_data(db, name, value, **tags)
 
-    def record_event(self, db, state):
+    def record_event(self, db, name, value, **tags):
         """ Add the event to the database """
-        return self.record_data(db, "events", state)
+        tags["kind"] = "event"
+        return self.record_data(db, name, value, **tags)
 
     async def get_request(self, request):
         """ Returns the configuration of the sensor """
-        return self.config
+        return web.json_response(self.config)
 
     async def query_request(self, request):
         """Returns the values from the database for this sensor
@@ -61,10 +64,11 @@ class Service():
 
         Returs 404 if no data exists.
         """
-        measurement = 'events' if request.query.get("events") is not None else 'samples'
         influx = request.app["influx-db"]
-        resp = await influx.query("""SELECT value FROM "{measurement}" WHERE "name"='{name}'"""
-                                  .format(measurement=measurement, name=self.name))
+        selection = request.query.get("select", "*")
+        #TODO: Sanitize inputs...
+        resp = await influx.query("""SELECT {selection} FROM "records" WHERE "service"='{name}'"""
+                                  .format(selection=selection, name=self.name))
         try:
             result= resp["results"][0]
             series = result["series"][0]
@@ -88,11 +92,10 @@ class Service():
         )
         """
 
-    async def get_last(self, db, measurement):
+    async def get_last(self, db, key):
         resp = await db.query(
-            """SELECT LAST("value") FROM "{measurement}"
-               WHERE "name"='{name}'
-            """.format(measurement=measurement, name=self.name)
+            """SELECT LAST("{key}") FROM "records" WHERE "service"='{name}'"""
+            .format(key=key, name=self.name)
         )
         try:
             result= resp["results"][0]
@@ -101,12 +104,6 @@ class Service():
             return (time, value)
         except KeyError:
             return None
-
-    def get_last_sample(self, db):
-        return self.get_last(db, "samples")
-
-    def get_last_event(self, db):
-        return self.get_last(db, "events")
 
     async def event_handler(self, app):
         pass

@@ -18,3 +18,7 @@ pip install wiringpi
 
 sudo apt-get install mosquitto mosquitto-clients
 pip install paho-mqtt
+
+ln -s /etc/systemd/system/aquarium-server.service aquarium-server.service
+sudo systemctl reload-daemon
+sudo systemctl 
