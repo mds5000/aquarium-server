@@ -1,0 +1,13 @@
+[Unit]
+Description=Aquarium System Initialization
+
+[Service]
+User=root
+Type=oneshot
+ExecStart=/home/pi/aquarium-server/ads1015-start.sh
+WorkingDirectory=/home/pi/aquarium-server
+StandardOut=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

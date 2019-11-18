@@ -1,5 +1,7 @@
 [Unit]
 Description=Aquarium Server (Python Backend)
+After=aquarium-init
+Requires=aquarium-init
 
 [Service]
 ExecStart=/home/pi/aquarium-server/venv/bin/backend_server

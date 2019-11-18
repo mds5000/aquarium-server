@@ -52,6 +52,10 @@ def main():
     switch_5 = GpioPin(27)
     switch_6 = GpioPin(17)
 
+    #input_0 = InputPin(25) # Top
+    #input_1 = InputPin(22) # Bottom
+
+
     led_0 = GpioPin(16)
     led_1 = GpioPin(24)
 
