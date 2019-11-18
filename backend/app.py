@@ -69,7 +69,12 @@ def main():
 
     app['services'] = [
         AnalogSensor(temp_sensor, "temperature", unit="F", scaling=[1.8, 32]),
-        CalibratableSensor(ph_sensor, "ph", unit="pH", scaling=[-16.903313, 7]),
+        ### pH Sensor Calibration Values 
+        ## Calibration on 11/17/2019 at 7.00pH and 10.00pH
+        ## 7.00 -> -0.003169V, 10.00 -> -0.180678V
+        ## pH = -16.90046 (mV) + 6.94644
+        ## REF IDEAL: ph = -16.90331 (mV) + 7
+        CalibratableSensor(ph_sensor, "ph", unit="pH", scaling=[-16.90046, 6.94644]),
         DosingPump(switch_6, "kalk"),
         DosingPump(switch_5, "calcium"),
         Switch(led_0, "red_led"),
