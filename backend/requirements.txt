@@ -4,5 +4,6 @@ aioinflux
 
 # Test only, put these in separate reqs
 pytest
+pytest-aiohttp
 asynctest
 aiofastforward

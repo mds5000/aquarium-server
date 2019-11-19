@@ -64,7 +64,7 @@ async def test_dosing_pump_card(aiohttp_client, test_app, mock_device):
     content = await resp.json()
     assert content["name"] == TEST_NAME
     assert content["schedule"] == []
-    assert content["manual"] == False
+    assert content["calibration"] == 1.66
 
 async def test_dosing_schedule(aiohttp_client, test_app, mock_device):
     pump = DosingPump(mock_device, TEST_NAME)
@@ -97,10 +97,10 @@ async def test_dosing_schedule(aiohttp_client, test_app, mock_device):
     assert resp.status == 200
     content = await resp.json()
     assert len(content) == 2
-    event_0 = DoseEvent.load(content[0])
+    event_0 = DoseEvent.Load(content[0])
     assert event_0.time == datetime.time(1,30)
     assert event_0.duration == 2
-    event_1 = DoseEvent.load(content[1])
+    event_1 = DoseEvent.Load(content[1])
     assert event_1.time == datetime.time(6,30)
     assert event_1.duration == 8
 
@@ -118,10 +118,7 @@ async def test_manual_dose(aiohttp_client, test_app, mock_device):
                              json=event)
     assert resp.status == 200
     content = await resp.json()
-    assert content["time"] == "00:00:00"
+    assert content["volume"] == None
     assert content["duration"] == 5
 
-    resp = await client.get("/api/{}/card".format(TEST_NAME))
-    assert resp.status == 200
-    content = await resp.json()
-    assert content["manual"] != False
+    #TODO Test that a manual dose is recorded and a 'purge' is not recorded.

@@ -56,9 +56,11 @@ class Service():
     async def query_request(self, request):
         """Returns the values from the database for this sensor
 
-        # TODO: Implement these parameters
+        If no begin or end parameters are specified, default to
+        return the last 24 hours worth of data.
+
         URL Parameters:
-            - "events": Add this parameter to query the events database
+            - "select": channels to return
             - "begin": Return Data after this time
             - "end": Return Data before this time
 
@@ -66,31 +68,54 @@ class Service():
         """
         influx = request.app["influx-db"]
         selection = request.query.get("select", "*")
+
+        begin = request.query.get("begin")
+        start_condition = "AND time >= now() - 24h" if begin is None else "AND time >= '{}'".format(begin)
+
+        end = request.query.get("end")
+        end_condition = "" if end is None else "AND time < '{}'".format(end)
+
         #TODO: Sanitize inputs...
-        resp = await influx.query("""SELECT {selection} FROM "records" WHERE "service"='{name}'"""
-                                  .format(selection=selection, name=self.name))
+        resp = await influx.query(
+            """SELECT {selection} FROM "records" WHERE "service"='{name}' {begin} {end}"""
+            .format(selection=selection, name=self.name, begin=start_condition, end=end_condition))
         try:
-            result= resp["results"][0]
-            series = result["series"][0]
-            values = series["values"]
+            values = self.parse_influx_response(resp)
         except KeyError:
             raise web.HTTPNotFound()
         return web.json_response(values)
-        """
-        begin = request.query.get("begin")
-        start_condition = "" if begin is None else "AND time >= {}".format(begin)
 
-        end = request.query.get("end")
-        end_condition = "" if end is None else "AND time < {}".format(end)
+    @staticmethod
+    def parse_influx_response(response):
+        """ Influx quires are of the form:
+        { "results": [
+            "statement_id": 0,
+            "series": [{
+              "name": "records",
+              "columns": ["time", "kind", "service",  ... ],
+              "values": [
+                [1234305030533, "sample", "service_name", 1, None],
+                ...
+              ]
+            }]
+          ]
+        }
 
-        influx = request.app["influx-db"]
-        resp = await influx.query(
-            ""
-            SELECT value FROM "events" 
-            WHERE "name"='{name}' {start} {end}
-            "".format(name=self.name, start=start_condition, end=end_condition)
-        )
+        We transform this into a flattened list of the form:
+        [
+          {"time": 1234305030533, "kind": "sample", "service": "service_name", "x", 1, ...},
+          { ... }
+        ]
         """
+        series = response["results"][0]["series"][0]
+        keys = series["columns"]
+        values = series["values"]
+
+        output = []
+        for row in values:
+            output.append(dict(zip(keys, row)))
+
+        return output
 
     async def get_last(self, db, key):
         resp = await db.query(
@@ -99,6 +124,7 @@ class Service():
         )
         try:
             result= resp["results"][0]
+            print("R", result)
             series = result["series"][0]
             time, value = series["values"][0]
             return (time, value)
