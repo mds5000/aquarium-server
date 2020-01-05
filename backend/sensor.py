@@ -14,11 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 class AnalogSensor(Service):
-    def __init__(self, sensor, name, period=60, unit="C", scaling=[1, 0]):
+    def __init__(self, sensor, name, period=60, unit="C", scaling=[1, 0], average=1):
         super().__init__(name)
         self.sensor = sensor
         self.period = period
         self.scaling = scaling
+        self.average = average
         self.unit = unit
         self.config = {
             "name": self.name,
@@ -60,10 +61,15 @@ class AnalogSensor(Service):
         while not self.shutdown_event.is_set():
             tick = loop.time()
 
-            value = await self.sensor.read_value()
-            scaled_value = self.scaling[0] * value + self.scaling[1]
-            await self.record_sample(influx, self.name, scaled_value)
-            self.log.debug("Aquired sample: %f -> %f", value, scaled_value)
+            scaled_value = 0
+            for i in range(self.average):
+                value = await self.sensor.read_value()
+                scaled_value += self.scaling[0] * value + self.scaling[1]
+                await asyncio.sleep((self.period / self.average) * 0.95)
+
+            average_value = scaled_value / self.average
+            await self.record_sample(influx, self.name, average_value)
+            self.log.debug("Aquired sample: %f -> %f", value, average_value)
 
             elapsed = loop.time() - tick
 
@@ -77,8 +83,8 @@ class AnalogSensor(Service):
 
 
 class CalibratableSensor(AnalogSensor):
-    def __init__(self, sensor, name, period=60, unit="C", scaling=[1, 0]):
-        super().__init__(sensor, name, period, unit, scaling)
+    def __init__(self, sensor, name, period=60, unit="C", scaling=[1, 0], average=1):
+        super().__init__(sensor, name, period, unit, scaling, average)
         self.add_route(
             web.get('/api/{}/calibration'.format(self.name), self.get_calibration_request),
             web.post('/api/{}/calibration'.format(self.name), self.post_calibration_request)
