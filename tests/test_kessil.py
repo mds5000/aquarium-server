@@ -115,7 +115,7 @@ async def test_kessil_load_profile(aiohttp_client, test_app, mock_device):
     await db.create_database(db=TEST_DATABASE)
 
     test_profile = [ProfilePoint(datetime.time(3, 30), 30,30).serialize()]
-    await kessil.record_event(db, json.dumps(test_profile))
+    await kessil.record_event(db, "profile", json.dumps(test_profile))
 
     profile = await kessil.load_profile(db)
     assert len(profile) == 1
