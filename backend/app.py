@@ -74,7 +74,7 @@ def main():
         ## 7.00 -> -0.003169V, 10.00 -> -0.180678V
         ## pH = -16.90046 (mV) + 6.94644
         ## REF IDEAL: ph = -16.90331 (mV) + 7
-        CalibratableSensor(ph_sensor, "ph", unit="pH", scaling=[-16.90046, 6.94644]),
+        CalibratableSensor(ph_sensor, "ph", unit="pH", scaling=[-16.90046, 6.94644], average=60),
         DosingPump(switch_6, "kalk"),
         DosingPump(switch_5, "calcium"),
         Switch(led_0, "red_led"),
