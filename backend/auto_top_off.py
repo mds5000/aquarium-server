@@ -12,12 +12,14 @@ class AtoState:
     WINDOW = 2   # Tripped, waiting on debounce window
     FILLING = 3  # Filling, waiting on clear or timeout
 
-class DosingPump(Service):
+class AtoController(Service):
     def __init__(self, sensor, pump, name):
         super().__init__(name)
         self.sensor = sensor
         self.pump = pump
         self.current_state = AtoState.DISABLED
+        self.window_period = 15
+        self.autofill_timeout = 30
         self.config = {
             "name": self.name,
             "type": "AutoTopOff",
@@ -48,54 +50,66 @@ class DosingPump(Service):
         })
 
 
-    def load_state():
+    def load_state(self):
+        return AtoState.MONITOR
 
     async def event_handler(self, app):
         self.log.info("Starting event handler.")
         influx = app["influx-db"]
         loop = asyncio.get_running_loop()
-        self.current_state = self.load_state():
+        self.current_state = self.load_state()
+
+        self.log.debug("starting in state %d", self.current_state)
 
 
         transition_time = 0.0
         while not self.shutdown_event.is_set():
-            asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)
 
             if self.current_state == AtoState.DISABLED:
-                self.pump.set_state(False)
+                await self.pump.set_state(False)
 
             elif self.current_state == AtoState.MONITOR:
-                if self.sensor.get_state():
+                if await self.sensor.get_state():
+                    self.log.debug("ATO Triggered, entering window state")
                     transition_time = loop.time()
                     self.current_state = AtoState.WINDOW
 
             elif self.current_state == AtoState.WINDOW:
-                if not self.sensor.get_state():
+                if not await self.sensor.get_state():
                     self.current_state = AtoState.MONITOR
+                    self.log.debug("Exiting window state before timeout.")
 
                 elif loop.time() > (transition_time + self.window_period):
+                    self.log.debug("Window state timeout, starting fill")
                     transition_time = loop.time()
                     self.current_state = AtoState.FILLING
-                    self.pump.set_state(True)
+                    await self.pump.set_state(True)
 
             elif self.current_state == AtoState.FILLING:
                 fill_time = loop.time() - transition_time
-                if not self.sensor.get_state():
+                if not await self.sensor.get_state():
                     # Full, go back to monitoring
                     self.current_state = AtoState.MONITOR
+                    self.log.debug("Fill complete, returning to monitor")
+
+                    transition_time = loop.time()
+                    await self.pump.set_state(False)
+                    await self.record_sample(influx, "fill", fill_time)
+                    self.log.info("Fill Completed in %d seconds", fill_time)
 
                 elif (fill_time >= self.autofill_timeout):
                     # Timeout without reaching full
                     self.current_state = AtoState.DISABLED
                     self.log.error("ATO Timeout while filling. ATO Disabled.")
 
-                transition_time = loop.time()
-                self.pump.set_state(False)
-                self.record_sample(db, "fill", fill_time)
+                    transition_time = loop.time()
+                    await self.pump.set_state(False)
+                    await self.record_sample(influx, "fill", fill_time)
 
             else:
                 # Invalid state, go back to monitoring
-                self.pump.set_state(False)
+                await self.pump.set_state(False)
                 self.current_state = AtoState.MONITOR
 
         # If the loop is somehow exited, shutdown the pump

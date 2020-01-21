@@ -5,11 +5,12 @@ import logging
 from aiohttp import web 
 from aioinflux import InfluxDBClient
 
-from .device import HwmonDevice, GpioPin, PwmPin
+from .device import HwmonDevice, GpioPin, PwmPin, Si7006Temperature, Si7006Humidity
 from .sensor import AnalogSensor, CalibratableSensor
 from .dosing_pump import DosingPump
 from .switch import Switch
 from .kessil import KessilController
+from .auto_top_off import AtoController
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +53,8 @@ def main():
     switch_5 = GpioPin(27)
     switch_6 = GpioPin(17)
 
-    #input_0 = InputPin(25) # Top
-    #input_1 = InputPin(22) # Bottom
-
+    input_0 = GpioPin(25, direction='in') # Top
+    input_1 = GpioPin(22, direction='in') # Bottom
 
     led_0 = GpioPin(16)
     led_1 = GpioPin(24)
@@ -64,8 +64,8 @@ def main():
 
     temp_sensor = HwmonDevice("temp1_input", "/sys/class/hwmon/hwmon0")
     ph_sensor = HwmonDevice("in3_input", "/sys/class/hwmon/hwmon1/device")
-    #system_temp_sensor
-    #humidity_sensor
+    system_temp = Si7006Temperature("/dev/i2c-1")
+    humidity_sensor = Si7006Humidity("/dev/i2c-1")
 
     app['services'] = [
         AnalogSensor(temp_sensor, "temperature", unit="F", scaling=[1.8, 32]),
@@ -75,11 +75,14 @@ def main():
         ## pH = -16.90046 (mV) + 6.94644
         ## REF IDEAL: ph = -16.90331 (mV) + 7
         CalibratableSensor(ph_sensor, "ph", unit="pH", scaling=[-16.90046, 6.94644], average=60),
+        AnalogSensor(system_temp, "systemp", unit="F"),
+        AnalogSensor(humidity_sensor, "humidity", unit="rH"),
         DosingPump(switch_6, "kalk"),
         DosingPump(switch_5, "calcium"),
         Switch(led_0, "red_led"),
         Switch(led_1, "green_led"),
-        KessilController(pwm1, pwm0, "kessil")
+        KessilController(pwm1, pwm0, "kessil"),
+        AtoController(input_1, switch_4, "ato")
     ]
 
     app.router.add_get("/api/services", list_services)
